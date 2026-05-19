@@ -100,7 +100,7 @@ class IrodoriTTSModelLoaderHF(io.ComfyNode):
             display_name="IrodoriTTS Model Loader HF", 
             category=CATEGORY, 
             inputs=[
-                io.String.Input("hf_checkpoint", default="Aratako/Irodori-TTS-500M-v2"), 
+                io.String.Input("hf_checkpoint", default="Aratako/Irodori-TTS-500M-v3"), 
                 io.Combo.Input("model_device", options=devices), 
                 io.Combo.Input("model_precision", options=precisions), 
                 io.Combo.Input("codec_device", options=devices), 
@@ -324,6 +324,21 @@ class IrodoriTTSSampler(io.ComfyNode):
                 io.String.Input("caption", multiline=True, default="", tooltip="Optional caption/style-control text"),
                 io.Int.Input("seed", default=0, min=0, max=sys.maxsize), 
                 io.Int.Input("num_steps", default=40, min=1, max=120), 
+                io.Float.Input(
+                    "seconds_override",
+                    default=-1.0,
+                    min=-1.0,
+                    max=120.0,
+                    step=0.1,
+                    tooltip="Set > 0 to force duration seconds. <= 0 uses v3 auto duration predictor.",
+                ),
+                io.Float.Input(
+                    "duration_scale",
+                    default=1.0,
+                    min=0.5,
+                    max=1.5,
+                    step=0.01,
+                ),
                 io.Combo.Input("cfg_guidance_mode", options=["independent", "joint", "alternating"], default="independent"), 
                 io.Float.Input("cfg_scale_text", default=3.0, min=0.0, max=10.0, step=0.1), 
                 io.Float.Input("cfg_scale_caption", default=3.0, min=0.0, max=10.0, step=0.1),
@@ -340,13 +355,31 @@ class IrodoriTTSSampler(io.ComfyNode):
         )
     
     @classmethod
-    def execute(cls, model, text, caption, seed, num_steps, cfg_guidance_mode, cfg_scale_text, cfg_scale_caption, cfg_scale_speaker, context_kv_cache, ref_audio_config={}, cfg_config={}, rescale_config={}):
+    def execute(
+        cls,
+        model,
+        text,
+        caption,
+        seed,
+        num_steps,
+        seconds_override,
+        duration_scale,
+        cfg_guidance_mode,
+        cfg_scale_text,
+        cfg_scale_caption,
+        cfg_scale_speaker,
+        context_kv_cache,
+        ref_audio_config={},
+        cfg_config={},
+        rescale_config={},
+    ):
         # Unpack optional configs
         ref_wav = ref_audio_config.get("ref_wav", None)
-        no_ref = ref_wav == None
+        no_ref = ref_wav is None
         ref_normalize_db = ref_audio_config.get("ref_normalize_db", None)
         ref_ensure_max = ref_audio_config.get("ref_ensure_max", True)
         max_ref_seconds = ref_audio_config.get("max_ref_seconds", 30.0)
+        manual_seconds = seconds_override if float(seconds_override) > 0 else None
         
         cfg_scale_override = cfg_config.get("cfg_scale_override", None)
         cfg_min_t = cfg_config.get("cfg_min_t", 0.5)
@@ -369,7 +402,8 @@ class IrodoriTTSSampler(io.ComfyNode):
             ref_ensure_max=ref_ensure_max,
             num_candidates=1,
             decode_mode="sequential",
-            seconds=30.0,
+            seconds=manual_seconds,
+            duration_scale=duration_scale,
             max_ref_seconds=max_ref_seconds,
             max_text_len=None,
             max_caption_len=None,
@@ -421,4 +455,3 @@ class IrodoriTTSEmojiSelector(io.ComfyNode):
     def execute(cls, **kwargs):
         return io.NodeOutput()
     
-
