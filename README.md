@@ -5,7 +5,7 @@
 ## install
 1. custom_nodesフォルダ上でgit clone
 2. 仮想環境を有効化した上で `pip install -r ComfyUI_IrodoriTTS_Wrapper/requirements.txt`
-3. 必要ならcheckpointsフォルダに[IrodoriTTSモデル](https://huggingface.co/Aratako/Irodori-TTS-500M-v3/blob/main/model.safetensors)をDLする
+3. 必要ならcheckpointsフォルダに[IrodoriTTSモデル](https://huggingface.co/Aratako/Irodori-TTS-600M-v3-VoiceDesign/blob/main/model.safetensors)をDLする
 
 
 ## ノード一覧
@@ -17,6 +17,7 @@
 - IrodoriTTSSampler
   - テキストの入力と実際の生成を行います
   - v3では`seconds_override <= 0`で自動長さ推定、`duration_scale`で長さを微調整できます
+  - VoiceDesignモデルでは`caption`に声質やスタイル指示を入力できます
 
 - IrodoriTTS Referenec Audio
 - IrodoriTTS Advanced CFG
