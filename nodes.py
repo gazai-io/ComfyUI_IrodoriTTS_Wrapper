@@ -7,6 +7,7 @@ import folder_paths
 from .irodori_tts.inference_runtime import (
     RuntimeKey,
     SamplingRequest,
+    download_hf_checkpoint,
     get_cached_runtime,
     list_available_runtime_devices,
     list_available_runtime_precisions
@@ -100,7 +101,7 @@ class IrodoriTTSModelLoaderHF(io.ComfyNode):
             display_name="IrodoriTTS Model Loader HF", 
             category=CATEGORY, 
             inputs=[
-                io.String.Input("hf_checkpoint", default="Aratako/Irodori-TTS-600M-v3-VoiceDesign"), 
+                io.String.Input("hf_checkpoint", default="Aratako/Irodori-TTS-v4.1-Small"),
                 io.Combo.Input("model_device", options=devices), 
                 io.Combo.Input("model_precision", options=precisions), 
                 io.Combo.Input("codec_device", options=devices), 
@@ -122,16 +123,14 @@ class IrodoriTTSModelLoaderHF(io.ComfyNode):
         codec_precision: str, 
         enable_watermark: bool
     ):
-        from huggingface_hub import hf_hub_download
-        
-        repo_id = hf_checkpoint.strip()
-        if not repo_id:
+        checkpoint_source = hf_checkpoint.strip()
+        if not checkpoint_source:
             raise ValueError("hf_checkpoint is required.")
         
-        if repo_id.endswith(".pt") or repo_id.endswith(".safetensors"):
-            checkpoint_path = repo_id
+        if checkpoint_source.endswith((".pt", ".safetensors")):
+            checkpoint_path = checkpoint_source
         else:
-            checkpoint_path = hf_hub_download(repo_id=repo_id, filename="model.safetensors")
+            checkpoint_path = download_hf_checkpoint(checkpoint_source)
         
         runtime_key = RuntimeKey(
             checkpoint=checkpoint_path,
@@ -164,8 +163,19 @@ class IrodoriTTSReferenceAudio(io.ComfyNode):
             category=CATEGORY, 
             inputs=[
                 io.Combo.Input("ref_audio", options=files), 
-                io.Boolean.Input("normalize_ref_audio", default=False), 
-                io.Float.Input("max_ref_seconds", default=30.0, min=1.0, max=120.0, step=1.0), 
+                io.Boolean.Input(
+                    "normalize_ref_audio",
+                    default=True,
+                    tooltip="Normalize reference loudness to -16 dB, matching the codec training setup.",
+                ),
+                io.Float.Input(
+                    "max_ref_seconds",
+                    default=-1.0,
+                    min=-1.0,
+                    max=120.0,
+                    step=1.0,
+                    tooltip="Set <= 0 to use the checkpoint default (120s for v4.1-Small, 30s for legacy models).",
+                ),
                 
             ], 
             outputs=[IO_IRODORI_REF_CONFIG.Output(display_name="ref_audio_config")],
@@ -177,8 +187,8 @@ class IrodoriTTSReferenceAudio(io.ComfyNode):
         config = {
             "ref_wav": audio_path, 
             "ref_normalize_db": -16.0 if normalize_ref_audio else None, 
-            "ref_ensure_max": normalize_ref_audio, 
-            "max_ref_seconds": max_ref_seconds, 
+            "ref_ensure_max": True,
+            "max_ref_seconds": max_ref_seconds if float(max_ref_seconds) > 0 else None,
         }
         
         return io.NodeOutput(config)
@@ -330,7 +340,7 @@ class IrodoriTTSSampler(io.ComfyNode):
                     min=-1.0,
                     max=120.0,
                     step=0.1,
-                    tooltip="Set > 0 to force duration seconds. <= 0 uses v3 auto duration predictor.",
+                    tooltip="Set > 0 to force duration seconds. <= 0 uses the checkpoint duration predictor (including v4.1-Small).",
                 ),
                 io.Float.Input(
                     "duration_scale",
@@ -343,7 +353,7 @@ class IrodoriTTSSampler(io.ComfyNode):
                 io.Float.Input("sway_coeff", default=-1.0, min=-1.0, max=1.5, step=0.1),
                 io.Combo.Input("cfg_guidance_mode", options=["independent", "joint", "alternating"], default="independent"), 
                 io.Float.Input("cfg_scale_text", default=3.0, min=0.0, max=10.0, step=0.1), 
-                io.Float.Input("cfg_scale_caption", default=4.0, min=0.0, max=10.0, step=0.1),
+                io.Float.Input("cfg_scale_caption", default=3.0, min=0.0, max=10.0, step=0.1),
                 io.Float.Input("cfg_scale_speaker", default=5.0, min=0.0, max=10.0, step=0.1), 
                 io.Boolean.Input("context_kv_cache", default=True), 
                 io.Int.Input("max_text_len", default=0, min=0, max=1024, step=1, tooltip="0 uses checkpoint default"),
@@ -386,7 +396,7 @@ class IrodoriTTSSampler(io.ComfyNode):
         no_ref = ref_wav is None
         ref_normalize_db = ref_audio_config.get("ref_normalize_db", None)
         ref_ensure_max = ref_audio_config.get("ref_ensure_max", True)
-        max_ref_seconds = ref_audio_config.get("max_ref_seconds", 30.0)
+        max_ref_seconds = ref_audio_config.get("max_ref_seconds", None)
         manual_seconds = seconds_override if float(seconds_override) > 0 else None
         
         cfg_scale_override = cfg_config.get("cfg_scale_override", None)
